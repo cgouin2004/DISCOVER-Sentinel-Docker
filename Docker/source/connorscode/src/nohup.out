@@ -1,0 +1,31 @@
+Loading Waypoints
+Waypoints Loaded Successfully
+Node has been initialized
+Publishers are added!
+Subscribers are added!
+Initializing flight manager
+Initializing Flight Commander
+Offboard Mode Detected: Waiting 5 seconds
+Beginning sending waypoints!
+Goint to waypoint #0
+Taking off to 8 meters
+Waypoint Reached. Waiting 3 seconds.
+Goint to waypoint #1
+Flying to: {'lat': 34.58745, 'long': -82.80773, 'alt': 8, 'flight_type': 1, 'speed': 1, 'delay': 3, 'tolerance': 2}
+Waypoint Reached. Waiting 3 seconds.
+Goint to waypoint #2
+Flying to: {'lat': 34.58734, 'long': -82.80752, 'alt': 8, 'flight_type': 1, 'speed': 4, 'delay': 4, 'tolerance': 2}
+Waypoint Reached. Waiting 4 seconds.
+Goint to waypoint #3
+Flying to: {'lat': 34.58691, 'long': -82.80778, 'alt': 8, 'flight_type': 1, 'speed': 5, 'delay': 5, 'tolerance': 2}
+Waypoint Reached. Waiting 5 seconds.
+Goint to waypoint #4
+Flying to: {'lat': 34.58696, 'long': -82.80802, 'alt': 8, 'flight_type': 1, 'speed': 1, 'delay': 8, 'tolerance': 2}
+Waypoint Reached. Waiting 8 seconds.
+Goint to waypoint #5
+Flying to: {'lat': 34.58719, 'long': -82.80792, 'alt': 8, 'flight_type': 1, 'speed': 2, 'delay': 3, 'tolerance': 2}
+Waypoint Reached. Waiting 3 seconds.
+Goint to waypoint #6
+Landing Drone
+Waypoint Reached. Waiting 1 seconds.
+finished program. Exiting
