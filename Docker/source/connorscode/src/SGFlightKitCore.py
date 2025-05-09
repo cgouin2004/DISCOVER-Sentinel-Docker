@@ -1,5 +1,10 @@
 #! /usr/bin/env python
 
+"""
+ROS-based autonomous flight manager for VOXL drone using MAVROS services and topics.
+Includes services for arming, mode setting, takeoff, landing, and setpoint publishers.
+"""
+
 import rospy
 from geometry_msgs.msg import PoseStamped, Quaternion, TwistStamped
 from mavros_msgs.msg import State, PositionTarget, GlobalPositionTarget
@@ -35,6 +40,12 @@ OFFBOARD_MODE_VALUE = "OFFBOARD"
 
 
 def log(string):
+    """
+    Utility function to log a string. Currently prints to console.
+
+    Args:
+        string (str): Message to log.
+    """
     # rospy.loginfo(string)
     print(string)
 
@@ -42,6 +53,9 @@ def log(string):
 class Orientation:
     """Container for roll, pitch, yaw in both radians and degrees."""
     def __init__(self):
+        """
+        Initialize orientation angles to zero.
+        """
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
@@ -50,7 +64,16 @@ class Orientation:
         self.yaw_deg = 0.0
 
 class _ROSServices:
+    """Base class for ROS service proxies."""
     def __init__ (self, service_name, type, wait = True):
+        """
+        Create a ROS service proxy.
+
+        Args:
+            service_name (str): ROS service topic.
+            type: Service message type.
+            wait (bool): Whether to wait for service to be available.
+        """
         
         if wait:
             rospy.wait_for_service(service_name)
@@ -60,6 +83,7 @@ class _ROSServices:
         self.service = rospy.ServiceProxy(service_name, type)
 
     def command(data):
+        """Placeholder method for executing service commands."""
         pass
 
 
@@ -67,11 +91,19 @@ class _ROSServices:
 
 
 class ArmService(_ROSServices):
+    """Service for arming and disarming the vehicle."""
     def __init__(self):
+        """Initialize the arm/disarm service."""
         super().__init__(ARM_SERVICE_URI, CommandBool)
 
 
     def arm(self) -> bool:
+        """
+        Arm the vehicle if it is connected and in OFFBOARD mode.
+
+        Returns:
+            bool: True if arming succeeded or vehicle already armed, False otherwise.
+        """
         if FlightManager.util_is_vehicle_armed():
             log("Vehicle is already armed")
             return True
@@ -90,6 +122,12 @@ class ArmService(_ROSServices):
             return False
 
     def disarm(self) -> bool:
+        """
+        Disarm the vehicle. To be implemented.
+
+        Returns:
+            bool: Disarming result (not yet implemented).
+        """
         #TODO
         pass
 
@@ -168,17 +206,22 @@ class LandService(_ROSServices):
 
 
 class _ROSPublisher:
+    """Helper base for ROS publishers."""
     def __init__(self, *args, **kwargs) -> None:
+        """Initialize a ROS publisher with given args and kwargs."""
         self.publisher = rospy.Publisher(*args, **kwargs)
 
     def publish(self, data):
+        """Publish data on the ROS topic."""
         self.publisher.publish(data)
 
 
 
 class LocalPosePublisher(_ROSPublisher):
+    """Asynchronous publisher for local position setpoints."""
 
     def __init__(self) -> None:
+        """Set up the local position publisher thread."""
         super().__init__(name=SET_LOCAL_POSITION_TOPIC_NAME, data_class=PositionTarget, queue_size=10)
         self.ros_rate = rospy.Rate(10)
         self.pose = None
@@ -186,6 +229,7 @@ class LocalPosePublisher(_ROSPublisher):
         self.async_pose_publisher_loop.start()
 
     def _publish_pose(self):
+        """Continuously publish the latest pose if connected and pose is set."""
         if threading.current_thread() == threading.main_thread():
             raise RuntimeError("This function cannot be called from the main thread!")
         while True:
@@ -196,6 +240,15 @@ class LocalPosePublisher(_ROSPublisher):
             self.ros_rate.sleep()
 
     def set_pose(self, x=None, y=None, z=None, velx=None, vely=None, velz=None, yaw=None):
+        """
+        Build and store a PositionTarget message with specified fields.
+        IMPORTANT: Hierarchy: Position, Velocity, Acceleration
+
+        Args:
+            x, y, z (float, optional): Position setpoints.
+            velx, vely, velz (float, optional): Velocity setpoints.
+            yaw (float, optional): Yaw angle in radians.
+        """
         pose = PositionTarget()
 
         pose.coordinate_frame = PositionTarget.FRAME_LOCAL_NED
@@ -224,37 +277,11 @@ class LocalPosePublisher(_ROSPublisher):
         else: pose.yaw = yaw
 
         
-        # if None in [velx, vely, velz] and yaw is None:
-        #     pose.type_mask = (PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ
-        #                 + PositionTarget.IGNORE_VX + PositionTarget.IGNORE_VY + PositionTarget.IGNORE_VZ
-        #                 + PositionTarget.IGNORE_YAW + PositionTarget.IGNORE_YAW_RATE)
-        #     pose.position.x = x
-        #     pose.position.y = y
-        #     pose.position.z = z
-        # elif None in [velx, vely, velz]:
-        #     pose.type_mask = (PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ
-        #                 + PositionTarget.IGNORE_VX + PositionTarget.IGNORE_VY + PositionTarget.IGNORE_VZ + PositionTarget.IGNORE_YAW_RATE)
-        #     pose.yaw = yaw
-        #     pose.position.x = x
-        #     pose.position.y = y
-        #     pose.position.z = z
-        # elif yaw is None:
-        #     pose.type_mask = (PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ
-        #                 + PositionTarget.IGNORE_YAW + PositionTarget.IGNORE_YAW_RATE)
-        #     pose.velocity.x = velx
-        #     pose.velocity.y = vely
-        #     pose.velocity.z = velz
-        # else:
-        #     pose.type_mask = (PositionTarget.IGNORE_AFX + PositionTarget.IGNORE_AFY + PositionTarget.IGNORE_AFZ + PositionTarget.IGNORE_YAW_RATE)
-        #     pose.yaw = yaw
-        #     pose.velocity.x = velx
-        #     pose.velocity.y = vely
-        #     pose.velocity.z = velz
-        
         self.pose = pose
 
 
     def kill_loop(self):
+        """Stop publishing pose setpoints."""
         self.pose = None
         log("****pose is none now****")
 
@@ -263,12 +290,20 @@ class LocalPosePublisher(_ROSPublisher):
 
 
 class VelocityPublisher(_ROSPublisher):
+    """Publisher for constant velocity commands."""
     def __init__(self):
+        """Initialize the velocity publisher."""
         super().__init__(name=SET_VELOCITY_TOPIC_NAME, data_class=TwistStamped, queue_size=10)
         self.ros_rate = rospy.Rate(20)
 
 
     def set_velocity(self, z):
+        """
+        Publish a continuous angular velocity command around Z-axis.
+
+        Args:
+            z (float): Angular velocity value.
+        """
         velocity = TwistStamped()
         velocity.twist.angular.z = 1
 
@@ -281,9 +316,11 @@ class VelocityPublisher(_ROSPublisher):
 
 
 class _FlightCore:
+    """Singleton core that manages ROS node, state, and basic flight methods."""
     _instance = None
 
     def __new__(cls, *args, **kwargs):
+        """Ensure only one instance exists."""
         if not cls._instance:
             cls._instance = super(_FlightCore, cls).__new__(cls, *args, **kwargs)
         return cls._instance
@@ -293,6 +330,7 @@ class _FlightCore:
         self.velocity_publisher = None
 
     def __init__(self) -> None:
+        """Initialize ROS node, publishers, and subscribers."""
         # Node name for identification
         self.node_name = "sg_flight_node"
         
@@ -345,45 +383,99 @@ class _FlightCore:
         print("Subscribers are added!")
 
     def is_vehicle_connected(self) -> bool:
+        """
+        Check if drone is connected to MAVROS.
+
+        Returns:
+            bool: True if connected and ROS not shutdown.
+        """
         return (not rospy.is_shutdown() and self.current_state.connected)
     
 
     def is_vehicle_mode_offboard(self) -> bool:
+        """
+        Check if drone is in OFFBOARD mode.
+
+        Returns:
+            bool: True if connected and mode is OFFBOARD.
+        """
         return (self.is_vehicle_connected() and self.current_state.mode == OFFBOARD_MODE_VALUE)
     
 
     def is_vehicle_armed(self) -> bool:
+        """
+        Check if drone is armed.
+
+        Returns:
+            bool: True if armed.
+        """
         return self.current_state.armed
     
 
     def offboard_mode_enable(self) -> bool:
+        """
+        Enable OFFBOARD flight mode.
+
+        Returns:
+            bool: Result of mode switch.
+        """
         return self.setMode_commander.set_mode_to_offboard()
 
 
     def wait_for_device_get_connected(self):
+        """Block until vehicle connection is detected."""
         while (not self.is_vehicle_connected()):
             self.ros_rate.sleep()
 
 
     def fly_to_position(self, x=None, y=None, z=None, velx=None, vely=None, velz=None, yaw=None):
+        """
+        Send a local setpoint for position or velocity.
+
+        Args:
+            x, y, z (float, optional): Target position setpoints.
+            velx, vely, velz (float, optional): Velocity setpoints.
+            yaw (float, optional): Yaw setpoint in radians.
+        """
         self.local_pose_publisher.set_pose(x=x, y=y, z=z, velx=velx, vely=vely, velz=velz, yaw=yaw)
         # self._update_pose_list(SpatialPosition(x, y, z))
 
     def spin_z(self, speed):
+        """
+        Command the vehicle to spin around the Z axis at a given angular speed.
+
+        Args:
+            speed (float): Angular velocity in rad/s.
+        """
         self.velocity_publisher.set_velocity(speed)
 
 
 
     def stop_moving(self):
+        """
+        Stop all movement by clearing setpoints.
+        """
         #TODO
         pass
 
 
     def wait(self, second=1):
+        """
+        Sleep for a given duration.
+
+        Args:
+            second (float): Time in seconds to wait.
+        """
         rospy.sleep(second)
 
     @classmethod
     def util_is_vehicle_connected(cls) -> bool:
+        """
+        Utility method: check if the singleton drone instance is connected.
+
+        Returns:
+            bool: True if connected.
+        """
         if cls._instance is not None:
             return cls._instance.is_vehicle_connected()
         else:
@@ -392,6 +484,12 @@ class _FlightCore:
     
     @classmethod 
     def util_is_vehicle_mode_offboard(cls) -> bool:
+        """
+        Utility method: check if the singleton drone instance is in OFFBOARD mode.
+
+        Returns:
+            bool: True if mode is OFFBOARD.
+        """
         if cls._instance is not None:
             return cls._instance.is_vehicle_mode_offboard()
         else:
@@ -400,6 +498,12 @@ class _FlightCore:
     
     @classmethod
     def util_is_vehicle_armed(cls) -> bool:
+        """
+        Utility method: check if the singleton drone instance is armed.
+
+        Returns:
+            bool: True if armed.
+        """
         if cls._instance is not None:
             return cls._instance.is_vehicle_armed()
         else:
@@ -407,13 +511,21 @@ class _FlightCore:
         
 
     def _current_state_callback(self, data):
-        """Callback for updates on the drone's state. 
-        It can be extended to handle various state-related operations.
+        """
+        Callback for MAVROS state updates.
+
+        Args:
+            data (State): The current vehicle state.
         """
         self.current_state = data
         
     def _current_imu_orientation_callback(self, msg: Imu):
-        """Update orientation from IMU's fused quaternion."""
+        """
+        Update orientation from IMU's fused quaternion.
+
+        Args:
+            msg (Imu): IMU data message.
+        """
         # Extract quaternion
         self.current_global_imu = msg
         q = msg.orientation
@@ -428,15 +540,31 @@ class _FlightCore:
         self.current_global_orientation.pitch_deg = (math.degrees(pitch) + 180.0) % 360.0 - 180.0
 
     def _current_yaw_callback(self, msg: Float64):
+        """
+        Update yaw from compass heading.
+
+        Args:
+            msg (Float64): Compass heading in degrees.
+        """
         self.current_global_orientation.yaw_deg = (msg.data+180.0)%360.0-180.0
         self.current_global_orientation.yaw = math.radians(msg.data)
 
     def _current_global_position_callback(self, data):
-        """Callback to update the drone's global position."""
+        """
+        Callback to update the drone's global GPS position.
+
+        Args:
+            data (NavSatFix): GPS fix data.
+        """
         self.current_global_loc = data
 
     def _current_local_position_callback(self, data):
-        """Callback to update the drone's local position and orientation."""
+        """
+        Callback to update the drone's local position and orientation.
+
+        Args:
+            data (PoseStamped): Local pose data.
+        """
         self.current_local_loc = data
         orientation = data.pose.orientation
         (roll, pitch, yaw) = euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
@@ -445,12 +573,20 @@ class _FlightCore:
 
 
 class FlightManager(_FlightCore):
+    """High-level flight manager that handles mission sequences and pose tracking."""
     def __init__(self):
+        """Initialize the FlightManager, inheriting from core and setting up pose history."""
         super().__init__()
         self.sent_pose_list = []
 
 
     def _update_pose_list(self, new_pose):
+        """
+        Append a new pose to history if it differs from the last recorded pose.
+
+        Args:
+            new_pose (SpatialPosition): The new pose to record.
+        """
         if (len(self.sent_pose_list) == 0):
             self.sent_pose_list.append(new_pose)
         else:
@@ -459,10 +595,28 @@ class FlightManager(_FlightCore):
                 self.sent_pose_list.append(new_pose)
 
     def fly_to_position(self, x=None, y=None, z=None, velx=None, vely=None, velz=None, yaw=None):
+        """
+        Override: send a setpoint and record it in history.
+
+        Args:
+            x, y, z (float, optional): Position setpoints.
+            velx, vely, velz (float, optional): Velocity setpoints.
+            yaw (float, optional): Yaw in radians.
+        """
         super().fly_to_position(x=x, y=y, z=z, velx=velx, vely=vely, velz=velz, yaw=yaw)
         self._update_pose_list(SpatialPosition(x, y, z))
 
     def load_waypoints(self, filename='mission.json', missions_dir='/home/ros/ros_ws/src/connorscode/missions'):
+        """
+        Load waypoint definitions from a JSON mission file.
+
+        Args:
+            filename (str): JSON file name containing mission waypoints.
+            missions_dir (str): Directory where mission files are stored.
+
+        Returns:
+            list: Waypoint dictionaries with lat, long, alt, flight_type, speed, delay, tolerance.
+        """
         # make sure there's exactly one slash between dir and file
         fullpath = missions_dir.rstrip('/') + '/' + filename
 
@@ -587,6 +741,15 @@ class FlightManager(_FlightCore):
         return velx, vely, velz
     
     def fly_simple(self, lateral_dist, yaw, speed, height_diff = 0.0):
+        """
+        Fly in a straight line relative to current pose using velocity control.
+
+        Args:
+            lateral_dist (float): Horizontal distance (m).
+            yaw (float): Relative bearing (deg).
+            speed (float): Speed (m/s).
+            height_diff (float): Vertical distance (m).
+        """
         yaw = self.current_orientation.get('yaw')*180/math.pi + yaw
         (velx, vely, velz) = self.compute_velocity_components(lateral_dist, yaw, speed, height_diff)
         dist3d = math.hypot(lateral_dist, height_diff)
@@ -597,6 +760,16 @@ class FlightManager(_FlightCore):
     
     
     def fly_gps_velocity(self, lat, long, speed, dest_rel_alt, delay = 0.0, tolerance = 2.0):
+        """
+        Navigate to a GPS waypoint using velocity commands.
+
+        Args:
+            lat, long (float): Destination GPS coords.
+            speed (float): Max speed (m/s).
+            dest_rel_alt (float): Desired relative altitude (m).
+            delay (float): Hover delay upon arrival (s).
+            tolerance (float): Distance tolerance (m).
+        """
         (distance, yaw) = self.distance_and_yaw(lat1=self.current_global_loc.latitude, long1=self.current_global_loc.longitude, lat2=lat, long2=long)
         while (distance > tolerance):
             if (distance < 3*tolerance and speed > 2.0 and delay != 0.0):
@@ -620,6 +793,17 @@ class FlightManager(_FlightCore):
         rospy.sleep(delay)
 
     def initialize_takeoff(self, speed = 1.0, time = 6.0, delay = 0.0):
+        """
+        Perform a vertical ascent then hover.
+
+        Args:
+            speed (float): Climb rate (m/s).
+            time (float): Duration of climb (s).
+            delay (float): Hover time after climb (s).
+
+        Returns:
+            tuple: (startx, starty, startz) coordinates.
+        """
         self.fly_to_position(velx=0.0, vely=0.0, velz=speed)
         self.wait(time)
         startx = self.current_local_loc.pose.position.x
@@ -630,12 +814,25 @@ class FlightManager(_FlightCore):
         return startx, starty, startz
     
     def initialize_landing(self, startx = None, starty = None, startz = None):
+        """
+        Perform a controlled descent to landing point.
+
+        Args:
+            startx, starty, startz (float, optional): Initial coordinates.
+        """
         self.fly_to_position(x=startx, y=starty, z=startz)
         self.wait(10.0)
         self.fly_to_position(x=startx, y=starty, velz = -0.75)
         self.wait(20.0)
 
     def fly_mission(self, filename='mission.json', missions_dir='/home/ros/ros_ws/src/connorscode/missions'):
+        """
+        Execute a series of waypoint-based flight legs defined in a JSON file.
+
+        Args:
+            filename (str): Mission file name.
+            missions_dir (str): Directory containing missions.
+        """
         waypoints = self.load_waypoints(filename=filename, missions_dir=missions_dir)
         startx = None
         starty = None
@@ -653,6 +850,9 @@ class FlightManager(_FlightCore):
         print('Mission Finished')
 
     def fly_to_position_velocity(self, x, y, z, speed):
+        """
+        Not Tested
+        """
         pose = PositionTarget()
         speed = abs(speed)
         distanced = 0.1 # distance at which position control takes over (in meters)
